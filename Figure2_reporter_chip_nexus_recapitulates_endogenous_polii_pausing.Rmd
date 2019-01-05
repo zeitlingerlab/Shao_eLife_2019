@@ -1,0 +1,178 @@
+---
+title: "Figure 2 Reporter-ChIP-nexus recapitulates endogenous Pol II pausing"
+author: "Wanqing Shao(was@stowers.org)"
+output:
+  pdf_document:
+    toc: yes
+header-includes:
+- \usepackage{fancyhdr}
+- \usepackage{lipsum}
+- \pagestyle{fancy}
+- \fancypagestyle{plain}{\pagestyle{fancy}}
+---
+
+# Description
+
+To demonstrate that reporter-ChIP-nexus captures endogenous Pol II pausing, we cloned a few *Drosophila pseudoobscura*promoter sequences from into our reporter. Pol II ChIP-nexus under control or Triptolide (TRI) treated condition was performed using transfected Kc167 cells and *pseudoobscura* ML83-63 cell line.
+
+# Enviroment setup
+
+``` {r setup, message=FALSE, error=FALSE}
+library(GenomicRanges, warn.conflicts=F)
+library(magrittr)
+
+
+setwd("/data/analysis_code")
+options(knitr.figure_dir = 
+          "Figure2_reporter_chip_nexus_recapitulates_endogenous_polii_pausing"
+        )
+
+source("shared_code/knitr_common.r")
+source("shared_code/ggplot_common.r")
+source("shared_code/granges_common.r")
+source("shared_code/metapeak_common.r")
+source("shared_code/sample_common.r")
+```
+
+# Analysis
+
+## ChIP-nexus recapitulates endogenous Pol II profile
+
+To test whether Pol II profile on the plasmid recapitulates the pattern of endogenous promoters, we cloned promoter sequences from *Drosophila pseudoobscura* into our reporter. Pol II profile at *pepck*, *comm2* and *pk* on the reporter or the endogeneous locus are plotted. Gene-specific 5’ RNA sequencing was used to manually map the transcription start site.
+
+```{r endogeneous_vs_plasmid, fig.height=8, fig.width=4}
+genome_annotations <- import("./dps_genome_annotation.bed")
+dps_sample_path <- load_bigwig("genome_dps_dmso_1h_rpb3_chipnexus")
+plasmid_annotations <- import("./plasmid_annotation.bed")
+
+get_exo_metapeak <- function(sample, upstream=100, downstream=101, 
+                             smooth=NA, endogeneous = F, dps_sample_path=NULL){
+	
+  gene <- as.character(subset(sample_list, sample_name == sample)$gene)
+	chromosome <- as.character(subset(sample_list, sample_name == sample )$chromosome)
+	
+	if(endogeneous ==F){
+	  
+  	sample_path <- load_bigwig(sample)
+  	region <- plasmid_annotations[seqnames(plasmid_annotations) == chromosome & 
+  	                              plasmid_annotations$name == gene] %>%
+  	          resize(., 1, "start")
+    seqlevels(region) <- chromosome
+    metapeak <- exo_metapeak(region, sample_path, 
+                             upstream=upstream, downstream=downstream, 
+                             sample_name=gene, smooth=smooth)
+    metapeak$sample <- paste(metapeak$sample_name, metapeak$strand)
+    metapeak$reads <- metapeak$reads / sum(abs(metapeak$reads))
+    metapeak
+      
+	}else{
+  
+    region <- genome_annotations[grep(gene, genome_annotations$name, ignore.case = T)]
+    seqlevels(region) <- as.character(seqnames(region))
+    metapeak <- exo_metapeak(region, dps_sample_path, 
+                             upstream=upstream, downstream=downstream, 
+                             sample_name=gene, smooth=smooth)
+    metapeak$sample <- paste(metapeak$sample_name, metapeak$strand)
+    metapeak$reads <- metapeak$reads / sum(abs(metapeak$reads))
+    metapeak
+	 
+	}
+}
+compare_endogenous_plasmid <- function(sample){
+  
+  gene <- as.character(subset(sample_list, sample_name == sample)$gene)
+	chromosome <- 
+	  as.character(subset(sample_list, sample_name == sample )$chromosome)
+	
+	plasmid_metapeak <- get_exo_metapeak(sample, upstream = 150, downstream = 151)
+	genome_metapeak <- get_exo_metapeak(sample, upstream = 150, downstream = 151,
+	                                    endogeneous = T, dps_sample_path = dps_sample_path)
+	
+	rna_bigwig <- sample_list[sample_list$data_type == "rna_5_sequencing" & 
+	                            sample_list$gene == gene,]$sample_name 
+	rna_metapeak <- get_exo_metapeak(rna_bigwig, upstream = 150, downstream = 151)
+	 
+	genome_metapeak$sample_name <- paste(genome_metapeak$sample_name, "genome")
+	plasmid_metapeak$sample_name <- paste(plasmid_metapeak$sample_name, "plasmid")
+  rna_metapeak$sample_name <- paste(rna_metapeak$sample_name, "RNA 5' sequencing")
+  
+  metapeak <- rbind(genome_metapeak, plasmid_metapeak, rna_metapeak)
+  metapeak$sample_name <- 
+    factor(metapeak$sample_name, levels = unique(metapeak$sample_name))
+  metapeak
+}
+
+plot_exo_single_gene <- 
+  function(metapeak, name, ncol = 1, scale = "free"){
+  metapeak.p <- subset(metapeak, strand == "+")
+  metapeak.n <- subset(metapeak, strand == "-")
+
+  x <- ggplot(metapeak.p, aes(x=tss_distance, y=reads)) + 
+       geom_bar(fill="#B23F49", stat="identity") + 
+       geom_bar(data=metapeak.n, aes(x=tss_distance, y=reads),
+                fill="#045CA8", stat="identity") + 
+       ggtitle(name)+ 
+       xlab("Distance from TSS (bp)") + 
+       ylab("Normalized reads") + 
+       geom_vline(xintercept=0, linetype=4)+
+       facet_wrap(facets = "sample_name", ncol =ncol, scale = scale)
+ 
+    print(x)
+}
+
+
+pepck_metapeak <- 
+  compare_endogenous_plasmid("reporter_dps_pepck_rpb3_chipnexus")
+comm2_metapeak <- 
+  compare_endogenous_plasmid("reporter_dps_comm2_rpb3_chipnexus")
+pk_metapeak <- 
+  compare_endogenous_plasmid("reporter_dps_pk_rpb3_chipnexus")
+
+plot_exo_single_gene(pepck_metapeak, "pepck")
+plot_exo_single_gene(comm2_metapeak, "comm2")
+plot_exo_single_gene(pk_metapeak, "pk")
+
+```
+
+## ChIP-nexus captures promoter-specific paused Pol II stability
+
+To test if gene-specific paused Pol II stability is also recapitulated on the reporter, we treated the transfected cell with DMSO or TRI. TRI blocks transcription initiation, leading to the loss of Pol II signal at the pausing position. The degree of Pol II loss at the pausing position is propotional to the stability of paused Pol II.
+
+```{r dmso_tri, fig.height=6, fig.width=4}
+
+compare_dmso_and_tri <- function(dmso, tri){
+  plasmid_dmso <- get_exo_metapeak(dmso, upstream=150, downstream = 151)
+  plasmid_tri <- get_exo_metapeak(tri, upstream=150, downstream = 151)
+  
+  plasmid_tri$reads <- plasmid_tri$reads / sum(abs(plasmid_dmso$reads))
+  plasmid_dmso$reads <- plasmid_dmso$reads / sum(abs(plasmid_dmso$reads))
+
+  
+  plasmid_dmso$sample_name <- paste(plasmid_dmso$sample_name, "Control")
+  plasmid_tri$sample_name <- paste(plasmid_tri$sample_name, "TRI")
+  
+  metapeak <- rbind(plasmid_dmso, plasmid_tri)
+  metapeak$sample_name <- 
+    factor(metapeak$sample_name, levels = unique(metapeak$sample_name))
+  metapeak
+}
+
+comm2_dmso_tri <- 
+  compare_dmso_and_tri("reporter_dmso_1h_dps_comm2_rpb3_chipnexus",
+                       "reporter_triptolide_1h_dps_comm2_rpb3_chipnexus")
+
+pk_dmso_tri <- 
+  compare_dmso_and_tri("reporter_dmso_1h_dps_pk_rpb3_chipnexus",
+                       "reporter_triptolide_1h_dps_pk_rpb3_chipnexus")
+
+plot_exo_single_gene(comm2_dmso_tri, "comm2", scale = "fixed")
+plot_exo_single_gene(pk_dmso_tri, "pk", scale = "fixed")
+```
+
+# Session Info
+
+This analysis was performed with the following R/Bioconductor session:
+
+```{r}
+sessionInfo()
+```

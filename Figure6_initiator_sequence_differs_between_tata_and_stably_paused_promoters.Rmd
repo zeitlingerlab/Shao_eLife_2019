@@ -1,0 +1,186 @@
+---
+title: "Figure 6 Initiator sequence differs between TATA and stably paused promoters"
+author: "Wanqing Shao(was@stowers.org) "
+output:
+  pdf_document:
+    toc: yes
+header-includes:
+- \usepackage{fancyhdr}
+- \usepackage{lipsum}
+- \pagestyle{fancy}
+- \fancypagestyle{plain}{\pagestyle{fancy}}
+---
+
+# Description
+
+Both the TATA box and downstream pausing sequences work synergetically with initiator (Inr), however, the TATA box and downstream pausing sequences have opposite effect on Pol II pausing, raising the possibility that some Inr sequences may work better with the TATA box, while others work better with downstream pausing sequences. To identify potential differences, we analyzed the naturally occurring Inr sequences from the TATA-containing promoters versus those of the stably paused promoters.
+# Enviroment setup
+
+``` {r setup, message=FALSE, error=FALSE}
+library(GenomicRanges, warn.conflicts=F)
+library(magrittr)
+library(Rmisc)
+library(Biostrings)
+library(BSgenome.Dmelanogaster.UCSC.dm3)
+library(seqLogo)
+
+setwd("/data/analysis_code")
+options(knitr.figure_dir = 
+          "Figure6_initiator_sequence_differs_between_tata_and_stably_paused_promoters"
+        )
+
+source("shared_code/knitr_common.r")
+source("shared_code/ggplot_common.r")
+source("shared_code/granges_common.r")
+source("shared_code/metapeak_common.r")
+source("shared_code/sample_common.r")
+```
+
+# Analysis
+
+## Inr sequence differs at TATA and stably paused promoters
+
+In our 2017 NG paper, we measured the paused Pol II half-life across *Drosophila* Kc167 cell genome. Here, we used the half-life data, separated genes into two groups and tested the promoter sequences at those two groups.
+
+1) genes with TATA box and short Pol II pausing and 
+
+2) genes without TATA and show long Pol II pausing. 
+
+Data from 2017 NG paper are downloaded from https://github.com/zeitlingerlab/Shao_NG_2017/tree/master/rdata and stored at /data/rdata.
+
+**half_life_df.RData**  File containing half-life information.
+
+**dm3_mrna_unique_tss.RData** File containing transcription start site information for dm3 genome. 
+
+
+```{r inr_heatmap, fig.width=6}
+half_life_df <- get(load("rdata/half_life_df.RData"))
+tss <- get(load("rdata/dme_mrna_unique_tss.RData"))
+
+half_life_tss <- tss[tss$fb_t_id %in% half_life_df$fb_t_id]
+
+find_motif <- function(motif_name, motif_seq, window_start, 
+                       window_end, gene_tss, mismatch=0) {
+    
+    motif <- DNAString(motif_seq)
+
+    if(window_start >= 0 & window_end >=0){
+      tss_r <- resize(gene_tss, window_end, "start") %>%
+               resize(., window_end - window_start, "end")
+    }
+    if(window_start < 0 & window_end >=0){
+      tss_r <- resize(gene_tss, window_end, "start") %>%
+               resize(., abs(window_start)+window_end, "end")
+    }
+    if(window_start < 0 & window_end <0){
+      tss_r <- resize(gene_tss, abs(window_start), "end") %>%
+               resize(., abs(window_start)-abs(window_end), "start")
+    }
+    
+    promoter_seq <- getSeq(Dmelanogaster, tss_r)
+    names(promoter_seq) <- tss_r$fb_t_id
+    
+    count_df <- vcountPattern(motif, promoter_seq, fixed = FALSE, 
+                              min.mismatch = 0, max.mismatch = mismatch) %>%
+                data.frame(fb_t_id = tss_r$fb_t_id, count =.)
+    
+    count_df$count <- ifelse(count_df$count >0, "T", "F")
+    colnames(count_df)[2] <- motif_name
+    count_df
+}
+
+tata_info_df <- find_motif("TATA", "STATAWAWR", -40, -20, half_life_tss, 1)
+half_life_df <- merge(half_life_df, tata_info_df)
+
+tata_tss <- tss[tss$fb_t_id %in% subset(half_life_df, TATA == "T" & 
+                                          half_life <= 30 & 
+                                          half_life > 0 )$fb_t_id]
+
+pausing_tss <- tss[tss$fb_t_id %in% subset(half_life_df, TATA == "F" & 
+                                          (half_life >= 60 |  
+                                           half_life < 0) )$fb_t_id]
+
+
+get_heatmap <- function(tss, window, name){
+  seq <- getSeq(Dmelanogaster, resize(tss, window, "center") )
+  seq_df <- as.character(seq) %>% lapply(., function(x)strsplit(x, "")) %>% 
+    unlist(., recursive = F) %>% do.call(rbind,.)%>% as.data.frame()
+
+  seq_df$id <- 1:nrow(seq_df)
+  seq_df_m <- melt(seq_df, id.vars  = "id")
+  
+  ATGC_plot <- ggplot(seq_df_m, aes(x= variable, y = id, fill = value)) + 
+    geom_tile() +
+    scale_fill_manual(values = c("#CD222C", "#2C699B", "black", "#FDCC4E")) +
+    xlab(paste(window, "bp around TSS")) + ylab("Genes")+ 
+    ggtitle(name)+
+    theme(axis.text.y = element_blank(),axis.ticks.y = element_blank(),
+          panel.border = element_rect( colour = "black", fill = NA, size=1))
+  print(ATGC_plot)
+}
+
+nothing <- get_heatmap(tata_tss, 101, "TATA Inr")
+nothing <- get_heatmap(tata_tss, 11, "TATA Inr")
+
+nothing <- get_heatmap(pausing_tss[1:length(tata_tss)], 
+                       101, "Pausing Inr")
+nothing <- get_heatmap(pausing_tss[1:length(tata_tss)], 
+                       11, "Pausing Inr")
+```
+
+## Sequence logo at TATA and stably paused promoters
+
+```{r seqlogo, fig.height=3}
+proportion <- function(x){
+   rs <- sum(x);
+   return(x / rs);
+}
+
+get_logo <- function(tss, seq = NULL){
+  if(is.null(seq)){
+      seq <- getSeq(Dmelanogaster, resize(tss, 11, "center") )
+  }
+  seq_m <- as.character(seq) %>% lapply(., function(x)strsplit(x, "")) %>% 
+    unlist(., recursive = F) %>% do.call(rbind,.)
+  freq_table <- apply(seq_m, 2, function(x)paste(x, collapse = "")) %>% DNAStringSet() %>% alphabetFrequency()
+  mef2 <- apply(freq_table[, 1:4], 1, proportion)
+  pwm <- makePWM(mef2)
+  seqLogo(mef2)
+  seq_m
+}
+
+tata_m <- get_logo(tata_tss)
+pausing_m <- get_logo(pausing_tss)
+
+```
+
+## Statistical test for the occurance of the "G" at the Inr +2 position
+
+```{r g_statistical_test}
+table(tata_m[, 7])
+table(pausing_m[, 7])
+
+tata_g_percent <- table(tata_m[,7])["G"]/nrow(tata_m) * 100
+pausing_g_percent <- table(pausing_m[,7])["G"]/nrow(pausing_m) * 100
+
+message("G% at TATA promoter ", round(tata_g_percent, digits = 2), " %")
+message("G% at pausing promoter ", round(pausing_g_percent, digits = 2), " %")
+
+testing_m <- matrix(c(table(tata_m[,7])["G"], table(pausing_m[,7])["G"], 
+                      nrow(tata_m) - table(tata_m[,7])["G"], 
+                      nrow(pausing_m) - table(pausing_m[,7])["G"]), 
+                      nrow = 2,
+                    dimnames = list(c("TATA", "pausing"), c("G", "None G")))
+
+test_result <- fisher.test(testing_m, alternative = "two.sided")
+test_result
+test_result$p.value
+```
+
+# SessionInfo
+
+This analysis was performed with the following R/Bioconductor session:
+
+```{r}
+sessionInfo()
+```

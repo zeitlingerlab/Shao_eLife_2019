@@ -1,0 +1,22 @@
+"","compare","pval"
+"1","TATA vs. Inr",8.32095793064535e-07
+"2","TATA vs. pausing",4.34742583384503e-06
+"3","TATA vs. TATA Inr",0.3174914410583
+"4","TATA vs. TATA pausing",0.656034927244278
+"5","TATA vs. Inr pausing",4.59513414134656e-09
+"6","TATA vs. TATA Inr pausing",0.837780033214688
+"7","Inr vs. pausing",0.451826842849797
+"8","Inr vs. TATA Inr",0.00583870337156031
+"9","Inr vs. TATA pausing",3.70002089015226e-05
+"10","Inr vs. Inr pausing",0.0103733045436425
+"11","Inr vs. TATA Inr pausing",0.00802825919576261
+"12","pausing vs. TATA Inr",0.0132291515509786
+"13","pausing vs. TATA pausing",9.07355997837501e-05
+"14","pausing vs. Inr pausing",0.00182649784588529
+"15","pausing vs. TATA Inr pausing",0.0140381070534822
+"16","TATA Inr vs. TATA pausing",0.207800193978372
+"17","TATA Inr vs. Inr pausing",0.000244700499376766
+"18","TATA Inr vs. TATA Inr pausing",0.577807934123173
+"19","TATA pausing vs. Inr pausing",1.1289401717576e-06
+"20","TATA pausing vs. TATA Inr pausing",0.588821665672266
+"21","Inr pausing vs. TATA Inr pausing",0.000933062704170417

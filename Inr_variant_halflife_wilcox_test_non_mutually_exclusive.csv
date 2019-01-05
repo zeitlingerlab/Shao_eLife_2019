@@ -1,0 +1,56 @@
+"","compare","pval"
+"1","TATA vs. pausing",4.34742583384503e-06
+"2","TATA vs. Inr non G",0.000845837313821532
+"3","TATA vs. Inr G",3.74696599858584e-26
+"4","TATA vs. TATA pausing",0.656034927244278
+"5","TATA vs. TATA Inr non G",0.000179404768891754
+"6","TATA vs. pausing Inr non G",0.00112333840728274
+"7","TATA vs. TATA pausing Inr non G",0.00104380870918719
+"8","TATA vs. TATA Inr G",1.1678311919001e-07
+"9","TATA vs. pausing Inr G",1.13672781928408e-26
+"10","TATA vs. TATA pausing Inr G",0.00019480324214591
+"11","pausing vs. Inr non G",1.64416596977645e-47
+"12","pausing vs. Inr G",7.41898619225031e-35
+"13","pausing vs. TATA pausing",9.07355997837501e-05
+"14","pausing vs. TATA Inr non G",1.08335691522066e-13
+"15","pausing vs. pausing Inr non G",1.62486273904349e-28
+"16","pausing vs. TATA pausing Inr non G",9.54708468157444e-09
+"17","pausing vs. TATA Inr G",0.000172794230202514
+"18","pausing vs. pausing Inr G",1.22064913169334e-31
+"19","pausing vs. TATA pausing Inr G",0.0189790959497449
+"20","Inr non G vs. Inr G",1.81775634471551e-125
+"21","Inr non G vs. TATA pausing",0.0576850374726969
+"22","Inr non G vs. TATA Inr non G",0.00737662635415569
+"23","Inr non G vs. pausing Inr non G",0.683430180864335
+"24","Inr non G vs. TATA pausing Inr non G",0.0113338184095441
+"25","Inr non G vs. TATA Inr G",1.54158857960407e-18
+"26","Inr non G vs. pausing Inr G",4.3999016398881e-105
+"27","Inr non G vs. TATA pausing Inr G",1.99638205857202e-09
+"28","Inr G vs. TATA pausing",7.03110479544424e-17
+"29","Inr G vs. TATA Inr non G",1.00504593628116e-27
+"30","Inr G vs. pausing Inr non G",4.59089397511533e-76
+"31","Inr G vs. TATA pausing Inr non G",2.50654830487983e-16
+"32","Inr G vs. TATA Inr G",0.727345301294569
+"33","Inr G vs. pausing Inr G",0.127900650329168
+"34","Inr G vs. TATA pausing Inr G",0.578817795190702
+"35","TATA pausing vs. TATA Inr non G",0.00247046057705642
+"36","TATA pausing vs. pausing Inr non G",0.040148775508538
+"37","TATA pausing vs. TATA pausing Inr non G",0.00414272924379221
+"38","TATA pausing vs. TATA Inr G",2.66880887712057e-07
+"39","TATA pausing vs. pausing Inr G",4.59557358701427e-18
+"40","TATA pausing vs. TATA pausing Inr G",0.000103592594238685
+"41","TATA Inr non G vs. pausing Inr non G",0.0300696062915031
+"42","TATA Inr non G vs. TATA pausing Inr non G",0.617778697776959
+"43","TATA Inr non G vs. TATA Inr G",5.84831959990473e-13
+"44","TATA Inr non G vs. pausing Inr G",1.90591247465869e-28
+"45","TATA Inr non G vs. TATA pausing Inr G",1.46130660561986e-08
+"46","pausing Inr non G vs. TATA pausing Inr non G",0.0324727489671628
+"47","pausing Inr non G vs. TATA Inr G",4.42449304964371e-17
+"48","pausing Inr non G vs. pausing Inr G",1.86261621607691e-70
+"49","pausing Inr non G vs. TATA pausing Inr G",3.8169789986594e-09
+"50","TATA pausing Inr non G vs. TATA Inr G",5.14515032302585e-10
+"51","TATA pausing Inr non G vs. pausing Inr G",3.87445549188064e-17
+"52","TATA pausing Inr non G vs. TATA pausing Inr G",1.55188566963453e-07
+"53","TATA Inr G vs. pausing Inr G",0.330180553814874
+"54","TATA Inr G vs. TATA pausing Inr G",0.809508281930834
+"55","pausing Inr G vs. TATA pausing Inr G",0.318855843330164

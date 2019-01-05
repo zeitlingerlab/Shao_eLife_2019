@@ -1,0 +1,173 @@
+---
+title: "Figure 5 The Inr strongly contributes to the degree of Pol II pausing"
+author: "Wanqing Shao(was@stowers.org) "
+output:
+  pdf_document:
+    toc: yes
+header-includes:
+- \usepackage{fancyhdr}
+- \usepackage{lipsum}
+- \pagestyle{fancy}
+- \fancypagestyle{plain}{\pagestyle{fancy}}
+---
+
+# Description
+
+To test if initiator (Inr) sequence can contribute to paused Pol II stability, we took a stably paused promoter *dve*, changed its upstream sequence or its upstream sequence together with the Inr to that of a TATA promoter *Act5C*. To further test if Inr can contribute to Pol II pausing independent of TATA box,, we took the stably paused promoter *dve* and replaced its Inr sequence with that of a TATA promoter *Act5C*.
+
+# Enviroment setup
+
+``` {r setup, message=FALSE, error=FALSE}
+library(GenomicRanges, warn.conflicts=F)
+library(magrittr)
+library(Rmisc)
+
+setwd("/data/analysis_code")
+options(knitr.figure_dir = 
+        "Figure5_Inr_contributes_to_the_degree_of_Pol II_pausing"
+        )
+
+source("shared_code/knitr_common.r")
+source("shared_code/ggplot_common.r")
+source("shared_code/granges_common.r")
+source("shared_code/metapeak_common.r")
+source("shared_code/sample_common.r")
+```
+
+# Analysis
+
+## Pol II signal changes after Inr replacement
+
+```{r inr_replacement, fig.width=7, fig.height=5}
+plasmid_annotations <- import("./plasmid_annotation.bed")
+
+get_exo_metapeak <- function(sample, upstream=100, downstream=101, 
+                             smooth=NA, endogeneous = F, dps_sample_path=NULL){
+	
+  gene <- as.character(subset(sample_list, sample_name == sample)$gene)
+	chromosome <- as.character(subset(sample_list, sample_name == sample )$chromosome)
+	
+	if(endogeneous ==F){
+	  
+	  	sample_path <- load_bigwig(sample)
+	  	region <- plasmid_annotations[seqnames(plasmid_annotations) == chromosome & 
+	  	                              plasmid_annotations$name == gene] %>%
+	  	          resize(., 1, "start")
+	    seqlevels(region) <- chromosome
+      metapeak <- exo_metapeak(region, sample_path, 
+                               upstream=upstream, downstream=downstream, 
+                               sample_name=gene, smooth=smooth)
+      metapeak$sample <- paste(metapeak$sample_name, metapeak$strand)
+      metapeak
+      
+	}else{
+	  
+  	  region <- genome_annotations[grep(gene, genome_annotations$name, ignore.case = T)]
+  	  seqlevels(region) <- as.character(seqnames(region))
+  	  metapeak <- exo_metapeak(region, dps_sample_path, 
+  	                           upstream=upstream, downstream=downstream, 
+  	                           sample_name=gene, smooth=smooth)
+  	  metapeak$sample <- paste(metapeak$sample_name, metapeak$strand)
+      metapeak
+	 
+	}
+}
+
+
+compare_dmso_and_tri <- function(dmso, tri, name,  plotting = T){
+  
+  plasmid_dmso <- get_exo_metapeak(dmso, upstream=150, downstream = 151)
+  plasmid_tri <- get_exo_metapeak(tri, upstream=150, downstream = 151)
+  
+  plasmid_tri$reads <- plasmid_tri$reads / sum(abs(plasmid_dmso$reads))
+  plasmid_dmso$reads <- plasmid_dmso$reads / sum(abs(plasmid_dmso$reads))
+
+  
+  plasmid_dmso$sample_name <- paste(name, "Control")
+  plasmid_tri$sample_name <- paste(name, "TRI")
+  
+  if(plotting){
+    metapeak <- rbind(plasmid_dmso, plasmid_tri)
+    metapeak.p <- subset(metapeak, strand == "+")
+    metapeak.n <- subset(metapeak, strand == "-")
+  
+  plot <- ggplot(metapeak.p, aes(x = tss_distance, y = reads, fill = strand))+ 
+          geom_bar(fill="#B23F49", stat="identity") + 
+          geom_vline(xintercept =0, linetype = "dotdash")+
+          geom_bar(data=metapeak.n, aes(x=tss_distance, y=reads), 
+                   fill="#045CA8", stat="identity")+
+          xlab("Distance from TSS (bp)")+ ylab("Normalized reads")+
+          facet_wrap(facets = "sample_name", ncol =2 )
+  print(plot)
+  }
+  
+  dmso_sig <- subset(plasmid_dmso, tss_distance >0 & tss_distance <= 80)$reads %>%
+              abs() %>% sum()
+  tri_sig <-  subset(plasmid_tri, tss_distance >0 & tss_distance <= 80)$reads%>%
+              abs() %>% sum()
+
+  sig_df <- data.frame(condition = c("dmso", "tri"), 
+                       paused_polii = c(dmso_sig, tri_sig), 
+                       name = name)
+  sig_df$paused_pol_norm <- sig_df$paused_polii / sig_df$paused_polii[1]
+  sig_df
+}
+
+
+name_list <-c("dve", "act5c_upstream_dve_fusion", "act5c_dve_downstream_fusion", "dve_act5c_inr")
+
+pol_sig_rep1 <- mapply(compare_dmso_and_tri,
+       paste0("reporter_dmso_1h_dps_", name_list, "_rpb3_chipnexus_rep1"),
+       paste0("reporter_triptolide_1h_dps_", name_list, "_rpb3_chipnexus_rep1"),
+       name_list,list(T), SIMPLIFY = F, USE.NAMES =F)  %>% do.call(rbind, .)
+
+pol_sig_rep2 <- mapply(compare_dmso_and_tri,
+       paste0("reporter_dmso_1h_dps_", name_list, "_rpb3_chipnexus_rep2"),
+       paste0("reporter_triptolide_1h_dps_", name_list, "_rpb3_chipnexus_rep2"),
+       name_list, list(F), SIMPLIFY = F, USE.NAMES =F)  %>% do.call(rbind, .)
+
+pol_sig_rep3 <- mapply(compare_dmso_and_tri,
+       paste0("reporter_dmso_1h_dps_", name_list[1:3], "_rpb3_chipnexus_rep3"),
+       paste0("reporter_triptolide_1h_dps_", name_list[1:3], "_rpb3_chipnexus_rep3"),
+       name_list[1:3], list(F), SIMPLIFY = F, USE.NAMES =F)  %>% do.call(rbind, .)
+
+pol_sig_rep4 <- mapply(compare_dmso_and_tri,
+       paste0("reporter_dmso_1h_dps_", name_list[1:2], "_rpb3_chipnexus_rep4"),
+       paste0("reporter_triptolide_1h_dps_", name_list[1:2], "_rpb3_chipnexus_rep4"),
+       name_list[1:2], list(F), SIMPLIFY = F, USE.NAMES =F)  %>% do.call(rbind, .)
+
+process_pol_sig <- function(df, control_n = 1){
+  df_sub <- subset(df, condition == "tri")
+  df_sub$paused_pol_norm <- df_sub$paused_pol_norm /  df_sub$paused_pol_norm[control_n]
+  df_sub
+}
+
+
+sig_df <- lapply(list(pol_sig_rep1, pol_sig_rep2, pol_sig_rep3, pol_sig_rep4),
+                process_pol_sig) %>% do.call(rbind, .)
+
+summary_df <- summarySE(sig_df, measurevar="paused_pol_norm", 
+                        groupvars=c("name", "condition"))
+
+ggplot(summary_df, aes(x=name, y=paused_pol_norm)) + 
+  geom_bar(stat= "identity", position = "dodge", 
+          fill =  c("#78AB30", "#3A662F", "#333E2F", "#333E2F")) + 
+  geom_errorbar(aes(ymin=paused_pol_norm-se, ymax=paused_pol_norm+se), 
+               width=.1, position=position_dodge(.9)) +
+  ggtitle("Pol II signal after TRI treatment")+
+  ylab("Normalized signal")+
+  scale_x_discrete(labels=c("dve", "Act5C-up-dve", 
+                           "Act5C-dve-down", "dve-Act5C-Inr")) +
+  xlab("")+ 
+  geom_hline(yintercept = 1, lty = 4) +
+  theme(axis.text.x = element_text(size=14, angle = 60, hjust = 1)) 
+
+```
+
+# Session Info
+
+This analysis was performed with the following R/Bioconductor session:
+
+```{r}
+sessionInfo()
+```

@@ -1,0 +1,168 @@
+---
+title: "Figure S4 Reporter-ChIP-nexus recapitulates endogenous Pol II pausing"
+author: "Wanqing Shao(was@stowers.org) "
+output:
+  pdf_document:
+    toc: yes
+header-includes:
+- \usepackage{fancyhdr}
+- \usepackage{lipsum}
+- \pagestyle{fancy}
+- \fancypagestyle{plain}{\pagestyle{fancy}}
+---
+
+# Description
+
+To test whether Pol II profile on the plasmid recapitulates the pattern of endogenous promoters, we cloned promoter sequences from *Drosophila pseudoobscura* into our reporter. Pol II profile at *Act5C*, *Pino*, *pepck*, *pxb*, *comm2*, *CG12730*, *pk* and *dve* on the reporter or the endogeneous locus are plotted. Gene-specific 5’ RNA sequencing was used to manually map the transcription start site.
+
+# Enviroment setup
+
+``` {r setup, message=FALSE, error=FALSE}
+library(GenomicRanges, warn.conflicts=F)
+library(magrittr)
+
+setwd("/data/analysis_code")
+options(knitr.figure_dir = 
+          "FigureS4_reporter_chipnexus_recapitulates_endogenous_polii_pausing"
+        )
+
+source("shared_code/knitr_common.r")
+source("shared_code/ggplot_common.r")
+source("shared_code/granges_common.r")
+source("shared_code/metapeak_common.r")
+source("shared_code/sample_common.r")
+```
+
+# Analysis
+
+## Pol II profile on the plasmid
+
+```{r plasmid, fig.width = 13}
+plasmid_annotations <- import("./plasmid_annotation.bed")
+genome_annotations <- import("./dps_genome_annotation.bed")
+
+dps_sample_path <- load_bigwig("genome_dps_dmso_1h_rpb3_chipnexus")
+
+get_exo_metapeak <- function(sample, upstream=100, downstream=101, 
+                             smooth=NA, endogeneous = F, dps_sample_path=NULL){
+	
+  gene <- as.character(subset(sample_list, sample_name == sample)$gene)
+	chromosome <- as.character(subset(sample_list, sample_name == sample )$chromosome)
+	
+	if(endogeneous ==F){
+	  
+	  	sample_path <- load_bigwig(sample)
+	  	region <- plasmid_annotations[seqnames(plasmid_annotations) == chromosome & 
+	  	                              plasmid_annotations$name == gene] %>%
+	  	          resize(., 1, "start")
+	    seqlevels(region) <- chromosome
+      metapeak <- exo_metapeak(region, sample_path, 
+                               upstream=upstream, downstream=downstream, 
+                               sample_name=gene, smooth=smooth)
+      metapeak$sample <- paste(metapeak$sample_name, metapeak$strand)
+      metapeak
+      
+	}else{
+	  
+  	  region <- genome_annotations[grep(gene, genome_annotations$name, ignore.case = T)]
+  	  seqlevels(region) <- as.character(seqnames(region))
+  	  metapeak <- exo_metapeak(region, dps_sample_path, 
+  	                           upstream=upstream, downstream=downstream, 
+  	                           sample_name=gene, smooth=smooth)
+  	  metapeak$sample <- paste(metapeak$sample_name, metapeak$strand)
+      metapeak
+	 
+	}
+}
+
+genome_examples <- c("reporter_dps_act5c_rpb3_chipnexus", 
+                      "reporter_dps_pino_rpb3_chipnexus", 
+                      "reporter_dps_pepck_rpb3_chipnexus", 
+                      "reporter_dps_pxb_rpb3_chipnexus",
+                      "reporter_dps_comm2_rpb3_chipnexus",
+                      "reporter_dps_cg12730_rpb3_chipnexus", 
+                      "reporter_dps_pk_rpb3_chipnexus", 
+                      "reporter_dps_dve_rpb3_chipnexus")
+
+
+genome_metapeaks <- mclapply(genome_examples, function(x){
+  metapeak <- get_exo_metapeak(x, upstream=150, downstream = 151,
+                               endogeneous = T, dps_sample_path= dps_sample_path)
+  metapeak$reads <- metapeak$reads / sum(abs(metapeak$reads))
+  metapeak
+}, mc.cores =3) %>% do.call(rbind, .)
+
+plot_exo_single_gene <- function(metapeak, name, ncol = 1, scale = "free", tss = 4){
+  
+  metapeak$sample_name <- factor(metapeak$sample_name, 
+                                 levels = unique(metapeak$sample_name))
+  
+  metapeak.p <- subset(metapeak, strand == "+")
+  metapeak.n <- subset(metapeak, strand == "-")
+
+  x <- ggplot(metapeak.p, aes(x=tss_distance, y=reads)) + 
+       geom_bar(fill="#B23F49", stat="identity") + 
+       geom_bar(data=metapeak.n, aes(x=tss_distance, y=reads),
+                fill="#045CA8", stat="identity") + 
+       ggtitle(name)+ 
+       xlab("Distance from TSS (bp)") + 
+       ylab("Normalized reads") + 
+       geom_vline(xintercept=0, linetype=tss)+
+       facet_wrap(facets = "sample_name", ncol =ncol, scale = scale)
+ 
+    print(x)
+}
+
+plot_exo_single_gene(genome_metapeaks, "Endogeneous Pol II profile", 
+                     ncol = length(genome_examples), scale = "fixed")
+```
+
+## Endogeneous Pol II profile
+
+```{r endogeneous, fig.width = 15}
+plasmid_examples <- c(genome_examples, "reporter_scp_rpb3_chipnexus")
+
+plasmid_metapeaks <- mclapply(plasmid_examples, function(x){
+  metapeak <- get_exo_metapeak(x, upstream=150, downstream = 151)
+  metapeak$reads <- metapeak$reads / sum(abs(metapeak$reads))
+  metapeak
+}, mc.cores =3) %>% do.call(rbind, .)
+
+
+plot_exo_single_gene(plasmid_metapeaks, "Pol II profile on the plasmid", 
+                     ncol = length(plasmid_examples), scale = "fixed")
+
+```
+
+## Gene-specific 5' RNA sequencing profile
+
+```{r rna_5_sequencing, fig.width=15}
+rna_5_samples <- c("reporter_dps_act5c_rna_5_sequencing", 
+                   "reporter_dps_pino_rna_5_sequencing",
+                   "reporter_dps_pepck_rna_5_sequencing",
+                   "reporter_dps_pxb_rna_5_sequencing",
+                   "reporter_dps_comm2_rna_5_sequencing",
+                   "reporter_dps_cg12730_rna_5_sequencing",
+                   "reporter_dps_pk_rna_5_sequencing",
+                   "reporter_dps_dve_rna_5_sequencing",
+                   "reporter_scp_rna_5_sequencing")
+
+rna_5_metapeaks <- mclapply(rna_5_samples, function(x){
+  metapeak <- get_exo_metapeak(x, upstream=150, downstream = 151)
+  metapeak$reads <- metapeak$reads / sum(abs(metapeak$reads))
+  metapeak
+}, mc.cores =3) %>% do.call(rbind, .)
+
+plot_exo_single_gene(rna_5_metapeaks, "Gene-specific 5' RNA sequencin", 
+                     ncol = length(plasmid_examples), scale = "fixed", 
+                     tss = 0)
+```
+
+
+# Session Info
+
+This analysis was performed with the following R/Bioconductor session:
+
+```{r}
+sessionInfo()
+```

@@ -1,0 +1,84 @@
+---
+title: "Figure S3 Paused Pol II stability at eight Drosophila pseudoobscura promoters"
+author: "Wanqing Shao(was@stowers.org) "
+output:
+  pdf_document:
+    toc: yes
+header-includes:
+- \usepackage{fancyhdr}
+- \usepackage{lipsum}
+- \pagestyle{fancy}
+- \fancypagestyle{plain}{\pagestyle{fancy}}
+---
+
+# Description
+
+To test the stability of paused Pol II in *Drosophila pseudoobscura* ML83-63 cells, we performed Pol II ChIP-nexus under control and Triptolide (TRI) teated conditions. TRI blocks transcription initiation and results in the loss of Pol II signal at the pausing position. The degree of Pol II signal loss is propotional to the stability of paused Pol II.
+
+# Enviroment setup
+
+``` {r setup, message=FALSE, error=FALSE}
+library(GenomicRanges, warn.conflicts=F)
+library(magrittr)
+
+setwd("/data/analysis_code")
+options(knitr.figure_dir = 
+          "FigureS3_paused_polii_stability_at_eight_drosophila_pseudoobscura_promoters"
+        )
+
+source("shared_code/knitr_common.r")
+source("shared_code/ggplot_common.r")
+source("shared_code/granges_common.r")
+source("shared_code/metapeak_common.r")
+source("shared_code/sample_common.r")
+```
+
+# Analysis
+
+## Paused Pol II stability
+
+```{r paused_polii, fig.height= 6, fig.width= 4,fig.align="center"}
+
+plasmid_annotations <- import("./plasmid_annotation.bed")
+genome_annotations <- import("./dps_genome_annotation.bed")
+
+dps_dmso_path <- load_bigwig("genome_dps_dmso_1h_rpb3_chipnexus")
+dps_tri_path <- load_bigwig("genome_dps_triptolide_1h_rpb3_chipnexus")
+
+combine_dmso_and_tri <- function(gr, sample_dmso_path, sample_tri_path){
+  dmso_metapeak <- exo_metapeak(gr, sample_dmso_path, 
+                                upstream = 150, downstream = 151, 
+                                sample_name = paste(gr$name, "control"))
+  tri_metapeak <- exo_metapeak(gr, sample_tri_path, 
+                               upstream = 150, downstream = 151, 
+                               sample_name =  paste(gr$name, "TRI"))
+  
+  metapeak <- rbind(dmso_metapeak, tri_metapeak)
+  x <- ggplot(subset(metapeak, strand == "+"), 
+              aes(x = tss_distance, y = reads, 
+                  fill = strand))+ 
+       geom_bar(fill="#B23F49", stat="identity") + 
+       geom_bar(data=subset(metapeak, strand == "-"), 
+                aes(x=tss_distance, y=reads), 
+                fill="#045CA8", stat="identity")+
+       ggtitle("Pol II profile in the genome") + 
+       xlab("Distance from TSS (bp)")+ 
+       ylab("RPM")+
+       facet_wrap(facets = "sample_name", ncol =1 )
+  
+  print(x)
+  
+}
+
+nothing <- lapply(genome_annotations, function(x){
+  combine_dmso_and_tri(x, dps_dmso_path, dps_tri_path)
+  })
+```
+
+# Session Info
+
+This analysis was performed with the following R/Bioconductor session:
+
+```{r}
+sessionInfo()
+```

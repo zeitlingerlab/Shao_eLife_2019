@@ -1,0 +1,122 @@
+---
+title: "Figure 1 Reporter-ChIP-nexus captures paused Pol II"
+author: "Wanqing Shao(was@stowers.org) "
+output:
+  pdf_document:
+    toc: yes
+header-includes:
+- \usepackage{fancyhdr}
+- \usepackage{lipsum}
+- \pagestyle{fancy}
+- \fancypagestyle{plain}{\pagestyle{fancy}}
+---
+
+# Description
+
+After designing reporter-ChIP-nexus, the first thing we'd like to check is if paused Pol II can be observed on the reporter. To achieve this, we cloned the Super Core Promoter (SCP) into our reporter, transfected the reporter into *Drosophila melanogaster* Kc167 cells and performed ChIP-nexus.
+
+SCP is a synthetic promoter designed by Kadonaga Lab. This promoter contains some of the well known core promoter elements including TATA, Inr, DPE, MTE and PB. This analysis will plot Pol II profile at SCP on the reporter.
+
+# Enviroment setup
+
+``` {r setup, message=FALSE, error=FALSE}
+library(GenomicRanges, warn.conflicts=F)
+library(magrittr)
+
+
+setwd("/data/analysis_code")
+options(knitr.figure_dir = 
+          "Figure1_reporter_chip_nexus_captures_paused_polii"
+        )
+
+source("shared_code/knitr_common.r")
+source("shared_code/ggplot_common.r")
+source("shared_code/granges_common.r")
+source("shared_code/metapeak_common.r")
+source("shared_code/sample_common.r")
+```
+
+# Analysis
+
+## Pol II ChIP-nexus profile at SCP
+
+```{r polii_at_scp}
+plasmid_annotations <- import("./plasmid_annotation.bed")
+
+get_exo_metapeak <- function(sample, upstream=100, downstream=101, 
+                             smooth=NA, endogeneous = F, dps_sample_path=NULL){
+	
+  gene <- as.character(subset(sample_list, sample_name == sample)$gene)
+	chromosome <- as.character(subset(sample_list, sample_name == sample )$chromosome)
+	
+	if(endogeneous ==F){
+	  
+	  	sample_path <- load_bigwig(sample)
+	  	region <- plasmid_annotations[seqnames(plasmid_annotations) == chromosome & 
+	  	                              plasmid_annotations$name == gene] %>%
+	  	          resize(., 1, "start")
+	    seqlevels(region) <- chromosome
+      metapeak <- exo_metapeak(region, sample_path, 
+                               upstream=upstream, downstream=downstream, 
+                               sample_name=gene, smooth=smooth)
+      metapeak$sample <- paste(metapeak$sample_name, metapeak$strand)
+      metapeak$reads <- metapeak$reads / sum(abs(metapeak$reads))
+      metapeak
+      
+	}else{
+	  
+  	  region <- genome_annotations[grep(gene, genome_annotations$name, ignore.case = T)]
+  	  seqlevels(region) <- as.character(seqnames(region))
+  	  metapeak <- exo_metapeak(region, dps_sample_path, 
+  	                           upstream=upstream, downstream=downstream, 
+  	                           sample_name=gene, smooth=smooth)
+  	  metapeak$sample <- paste(metapeak$sample_name, metapeak$strand)
+  	  metapeak$reads <- metapeak$reads / sum(abs(metapeak$reads))
+      metapeak
+	 
+	}
+}
+
+
+scp_metapeak <- get_exo_metapeak("reporter_scp_rpb3_chipnexus", 
+                                 upstream=150, downstream = 151)
+
+
+plot_exo_single_gene <- function(metapeak, name, ncol = 1, scale = "free"){
+  metapeak.p <- subset(metapeak, strand == "+")
+  metapeak.n <- subset(metapeak, strand == "-")
+
+  x <- ggplot(metapeak.p, aes(x=tss_distance, y=reads)) + 
+       geom_bar(fill="#B23F49", stat="identity") + 
+       geom_bar(data=metapeak.n, aes(x=tss_distance, y=reads),
+                fill="#045CA8", stat="identity") + 
+       ggtitle(name)+ 
+       xlab("Distance from TSS (bp)") + 
+       ylab("Normalized reads") + 
+       geom_vline(xintercept=0, linetype=4)+
+       facet_wrap(facets = "sample_name", ncol =ncol, scale = scale)
+ 
+    print(x)
+}
+
+
+nothing <- plot_exo_single_gene(scp_metapeak, "Pol II ChIP-nexus profile at SCP")
+```
+
+## RNA 5' seq profile at SCP
+
+```{r rna_5seq_at_scp}
+scp_rna_metapeak <- get_exo_metapeak("reporter_scp_rna_5_sequencing", 
+                                 upstream=150, downstream = 151)
+
+nothing <- plot_exo_single_gene(scp_rna_metapeak, "RNA 5' sequencing profile at SCP")
+
+```
+
+# Session Info
+
+This analysis was performed with the following R/Bioconductor session:
+
+```{r}
+sessionInfo()
+```
