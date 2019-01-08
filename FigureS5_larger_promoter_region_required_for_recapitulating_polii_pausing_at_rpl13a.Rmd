@@ -1,0 +1,205 @@
+---
+title: "Figure S5 Larger promoter region insertion is required for recapitulating Pol II pausing at RpL13A on the plasmid"
+author: "Wanqing Shao(was@stowers.org) "
+output:
+  pdf_document:
+    toc: yes
+header-includes:
+- \usepackage{fancyhdr}
+- \usepackage{lipsum}
+- \pagestyle{fancy}
+- \fancypagestyle{plain}{\pagestyle{fancy}}
+---
+
+# Description
+
+Promoters with TFIID-bound core promoter elements typically do not have strong +1 promoter nucleosomes and may less likely to be dependent on a natural chromatin context for Pol II pausing. To test the versatility of our assay, we therefore also cloned the promoter of a **Drosophila pseudoobscura** ribosomal gene, **RpL13A**, into our plasmid. This promoter belongs to the group of promoters that uses TCT as initiator element and undergoes focused initiation, but unlike promoters with TFIID-bound core promoter elements, it has a strong +1 nucleosome with high levels of H3K4me3. To test if genomic context is important in establishing Pol II pausing, we built reporter construct with 300 bp or 2 kb insertion and we will compare our result **RpL13A** and **Act5C**.
+
+# Enviroment setup
+
+``` {r setup, message=FALSE, error=FALSE}
+library(GenomicRanges, warn.conflicts=F)
+library(magrittr)
+
+setwd("/data/analysis_code")
+options(knitr.figure_dir = 
+          "FigureS5_larger_promoter_region_required_for_recapitulating_polii_pausing_at_rpl13a"
+        )
+
+source("shared_code/knitr_common.r")
+source("shared_code/ggplot_common.r")
+source("shared_code/granges_common.r")
+source("shared_code/metapeak_common.r")
+source("shared_code/sample_common.r")
+```
+
+# Analysis
+
+## Endogenous profile
+
+```{r endogenous_profile, fig.width = 8, fig.height= 5}
+
+plasmid_annotations <- import("plasmid_annotation.bed")
+genome_annotations <- import("dps_genome_annotation.bed")
+
+selected_genes <- c("act5c",  "rpl13a")
+chip_samples <- c("h3k4me3_chipseq", "wce")
+
+chipseq_metapeak <- 
+  mclapply(selected_genes, function(x){
+  gene_gr <- genome_annotations[genome_annotations$name == x]
+  metapeak <- lapply(chip_samples, 
+          function(y)standard_metapeak(gene_gr, load_bigwig(paste0("genome_dps_", y))$pos, 
+                  upstream = 500, downstream = 1000, 
+                  sample_name = paste(x, y))) %>% do.call(rbind, .)
+  metapeak
+}, mc.cores =3) %>% do.call(rbind, .)
+
+
+chipnexus_metapeak <- 
+  mclapply(selected_genes, function(x){
+  gene_gr <- genome_annotations[genome_annotations$name == x]
+  metapeak <- exo_metapeak(gene_gr, load_bigwig("genome_dps_dmso_1h_rpb3_chipnexus"),
+                           upstream = 500, downstream = 1000, sample_name = x)
+  metapeak$sample <- paste(metapeak$sample_name, metapeak$strand)
+  metapeak
+}, mc.cores =2) %>% do.call(rbind, .)
+
+
+
+chipseq_metapeak$sample_name <- 
+  factor(chipseq_metapeak$sample_name, levels = unique(chipseq_metapeak$sample_name))
+
+chipnexus_metapeak$sample_name <- 
+  factor(chipnexus_metapeak$sample_name, levels = unique(chipnexus_metapeak$sample_name))
+
+plot_chipseq_single_gene <- function(metapeak, name){
+  x <- ggplot(metapeak, aes(x=tss_distance, y=reads)) + geom_area(fill="#0E1944") + 
+    ggtitle(name) + xlab("distance from TSS(bp)") + 
+    ylab("Reads per million") +  geom_vline(xintercept=0, linetype=4)+
+    facet_wrap("sample_name", nrow =2, dir = "v")
+  print(x)
+}
+
+plot_chipnexus_single_gene <- function(metapeak, name){
+  x <- ggplot(subset(metapeak, strand == "+"), 
+              aes(x = tss_distance, y = reads, fill = strand))+ 
+    geom_bar(fill="#B23F49", stat="identity") + 
+    geom_bar(data=subset(metapeak, strand == "-"), aes(x=tss_distance, y=reads), 
+             fill="#045CA8", stat="identity")+
+    ggtitle(name) + xlab("Distance from TSS (bp)")+ ylab("Normalized reads")+
+    facet_wrap(facets = "sample_name", nrow =1, scales = "free_y") +
+    geom_vline(xintercept=0, linetype=4)
+  print(x)
+}
+
+
+nothing <- plot_chipseq_single_gene(chipseq_metapeak, "Endogenous loci")
+nothing <- plot_chipnexus_single_gene(chipnexus_metapeak, "Endogenous loci")
+```
+
+## 300 bp vs. 2k insertion profile
+
+```{r 300bp_vs_2kb, fig.width = 10, fig.height= 5}
+get_exo_metapeak <- function(sample, upstream=100, downstream=101, smooth=NA, gfp_norm=F){
+	gene <- as.character(subset(sample_list, sample_name == sample)$gene)
+	chromosome <- as.character(subset(sample_list, sample_name == sample )$chromosome)
+	sample.path <- load_bigwig(sample)
+	region <- resize(plasmid_annotations[seqnames(plasmid_annotations) == chromosome & 
+	                                     plasmid_annotations$name == gene], 1, "start")
+	seqlevels(region) <- chromosome
+  metapeak <- exo_metapeak(region, sample.path, upstream=upstream, downstream=downstream, 
+                           sample_name=paste(sample, "plasmid"), smooth=smooth)
+  metapeak$sample <- paste(metapeak$sample_name, metapeak$strand)
+      
+  if(gfp_norm){
+        gfp_gr <- resize(plasmid_annotations[seqnames(plasmid_annotations) == chromosome & 
+                                             plasmid_annotations$name == gene], 1, "end")
+        gfp_gr <- resize(gfp_gr, 701, "end")
+        gfp_sig <- nexus_regionSums(gfp_gr,sample.path) / width(gfp_gr)
+        metapeak$reads <- metapeak$reads / gfp_sig 
+  }
+  metapeak
+}
+
+
+get_chipseq_metapeak <- function(sample, upstream=100, downstream=101, smooth=NA){
+	gene <- as.character(subset(sample_list, sample_name == sample)$gene)
+	chromosome <- as.character(subset(sample_list, sample_name == sample )$chromosome)
+
+	sample.path <- load_bigwig(sample)$pos
+	region <- resize(plasmid_annotations[seqnames(plasmid_annotations) == chromosome & plasmid_annotations$name == gene], 1, "start")
+	seqlevels(region) <- chromosome
+  metapeak <- standard_metapeak(region, sample.path, upstream=upstream, downstream=downstream, sample_name=paste(sample, "plasmid"), smooth=smooth)
+  metapeak$sample <- paste(metapeak$sample_name, metapeak$strand)
+  metapeak
+}
+
+histone_modification <-  function(h3k4me3, wce){
+  h3k4me3_metapeak <- 
+    get_chipseq_metapeak(h3k4me3, upstream=500, downstream = 1001,  smooth=NA)
+  wce_metapeak <- 
+    get_chipseq_metapeak(wce, upstream=500, downstream = 1001,  smooth=NA)
+  metapeak <- rbind(h3k4me3_metapeak, wce_metapeak)
+  metapeak
+}
+
+rpl13a_2kb <- histone_modification("reporter_dps_rpl13a_2kb_h3k4me3_chipseq_rep1", "reporter_dps_rpl13a_2kb_wce_rep1")
+act5c_2kb <- histone_modification("reporter_dps_act5c_2kb_h3k4me3_chipseq_rep1", "reporter_dps_act5c_2kb_wce_rep1")
+metapeak_2kb <- rbind(rpl13a_2kb, act5c_2kb)
+
+rpl13a_300 <- histone_modification("reporter_dps_rpl13a_h3k4me3_chipseq_rep1", "reporter_dps_rpl13a_wce_rep1")
+act5c_300 <- histone_modification("reporter_dps_act5c_h3k4me3_chipseq_rep1", "reporter_dps_act5c_wce_rep1")
+metapeak_300 <- rbind(rpl13a_300, act5c_300)
+
+ggplot(metapeak_2kb, aes(x=tss_distance, y=reads)) +
+  geom_area(fill="#0E1944") +
+  xlab("distance from TSS(bp)") +
+  ylab("Reads per million") + 
+  ggtitle("2kb insertion")+
+  facet_wrap(facets = "sample_name", dir = "v")
+  
+ggplot(metapeak_300, aes(x=tss_distance, y=reads)) +
+  geom_area(fill="#0E1944") +
+  xlab("distance from TSS(bp)") +
+  ylab("Reads per million") + 
+  ggtitle("300 bp insertion")+
+  ylim(0, 4000)+
+  facet_wrap(facets = "sample_name", dir = "v")
+
+
+act5c_chipnexus <- c("reporter_dps_act5c_2kb_rpb3_chipnexus_rep1",
+                     "reporter_dps_act5c_rpb3_chipnexus_rep1")
+rpl13a_chipnexus <- c("reporter_dps_rpl13a_2kb_rpb3_chipnexus_rep1",
+                     "reporter_dps_rpl13a_rpb3_chipnexus_rep1")
+
+chipnexus_metapeak_act5c <- lapply(act5c_chipnexus, function(x)get_exo_metapeak(x, upstream=500, 
+          downstream = 1001,  smooth=NA, gfp_norm=T)) %>% do.call(rbind, .)
+
+chipnexus_metapeak_rpl13a <- lapply(rpl13a_chipnexus, function(x)get_exo_metapeak(x, upstream=500, 
+          downstream = 1001,  smooth=NA, gfp_norm=T)) %>% do.call(rbind, .)
+
+plot_chipnexus_single_gene2 <- function(metapeak, name){
+  x <- ggplot(subset(metapeak, strand == "+"), 
+              aes(x = tss_distance, y = reads, fill = strand))+ 
+    geom_bar(fill="#B23F49", stat="identity") + 
+    geom_bar(data=subset(metapeak, strand == "-"), aes(x=tss_distance, y=reads), 
+             fill="#045CA8", stat="identity")+
+    ggtitle(name) + xlab("Distance from TSS (bp)")+ ylab("Normalized reads")+
+    facet_wrap(facets = "sample_name", nrow =1) +
+    geom_vline(xintercept=0, linetype=4)
+  print(x)
+}
+
+plot_chipnexus_single_gene2(chipnexus_metapeak_act5c, "Act5C")
+plot_chipnexus_single_gene2(chipnexus_metapeak_rpl13a, "RpL13A")
+
+```
+
+# Session Info
+
+This analysis was performed with the following R/Bioconductor session:
+
+```{r}
+sessionInfo()
+```

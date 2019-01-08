@@ -1,0 +1,189 @@
+---
+title: "Figure 3 and S7 changes in downstream promoter sequence alter polii pausing"
+author: "Wanqing Shao(was@stowers.org) "
+output:
+  pdf_document:
+    toc: yes
+header-includes:
+- \usepackage{fancyhdr}
+- \usepackage{lipsum}
+- \pagestyle{fancy}
+- \fancypagestyle{plain}{\pagestyle{fancy}}
+---
+
+# Description
+
+This set of experiments is aimed at testing whether reporter-ChIP-nexus can detect changes in Pol II pausing after manipulating promoter sequences. To do this, we focused on downstream promoter sequences, as accumulating evidence suggests that downstream DNA influences Pol II pausing. We took two TATA promoters *Act5C* and *pepck*, and changed its downstream sequence to that of a pausing promoter *pk* or *dve*. Changes in paused Pol II stability were probed by performing Pol II ChIP-nexus at control and Triptolide (TRI) treated conditions.
+
+
+# Enviroment setup
+
+``` {r setup, message=FALSE, error=FALSE}
+library(GenomicRanges, warn.conflicts=F)
+library(magrittr)
+library(Rmisc)
+
+setwd("/data/analysis_code")
+options(knitr.figure_dir = 
+          "Figure3_S7_changes_in_downstream_promoter_sequence_alter_polii_pausing")
+
+source("shared_code/knitr_common.r")
+source("shared_code/ggplot_common.r")
+source("shared_code/granges_common.r")
+source("shared_code/metapeak_common.r")
+source("shared_code/sample_common.r")
+```
+
+# Analysis
+
+## Pol II ChIP-nexus profile after TRI treatment
+
+```{r dmso_tri, fig.width=8}
+plasmid_annotations <- import("./plasmid_annotation.bed")
+
+get_exo_metapeak <- function(sample, upstream=100, downstream=101, 
+                             smooth=NA, endogeneous = F, dps_sample_path=NULL){
+	
+  gene <- as.character(subset(sample_list, sample_name == sample)$gene)
+	chromosome <- as.character(subset(sample_list, sample_name == sample )$chromosome)
+	
+	if(endogeneous ==F){
+	  
+	  	sample_path <- load_bigwig(sample)
+	  	region <- plasmid_annotations[seqnames(plasmid_annotations) == chromosome & 
+	  	                              plasmid_annotations$name == gene] %>%
+	  	          resize(., 1, "start")
+	    seqlevels(region) <- chromosome
+      metapeak <- exo_metapeak(region, sample_path, 
+                               upstream=upstream, downstream=downstream, 
+                               sample_name=gene, smooth=smooth)
+      metapeak$sample <- paste(metapeak$sample_name, metapeak$strand)
+      metapeak
+      
+	}else{
+	  
+  	  region <- genome_annotations[grep(gene, genome_annotations$name, ignore.case = T)]
+  	  seqlevels(region) <- as.character(seqnames(region))
+  	  metapeak <- exo_metapeak(region, dps_sample_path, 
+  	                           upstream=upstream, downstream=downstream, 
+  	                           sample_name=gene, smooth=smooth)
+  	  metapeak$sample <- paste(metapeak$sample_name, metapeak$strand)
+      metapeak
+	 
+	}
+}
+
+compare_dmso_and_tri <- function(dmso, tri, name,  plotting = T){
+  
+  plasmid_dmso <- get_exo_metapeak(dmso, upstream=150, downstream = 151)
+  plasmid_tri <- get_exo_metapeak(tri, upstream=150, downstream = 151)
+  
+  plasmid_tri$reads <- plasmid_tri$reads / sum(abs(plasmid_dmso$reads))
+  plasmid_dmso$reads <- plasmid_dmso$reads / sum(abs(plasmid_dmso$reads))
+
+  
+  plasmid_dmso$sample_name <- paste(name, "Control")
+  plasmid_tri$sample_name <- paste(name, "TRI")
+  
+  if(plotting){
+    metapeak <- rbind(plasmid_dmso, plasmid_tri)
+    metapeak.p <- subset(metapeak, strand == "+")
+    metapeak.n <- subset(metapeak, strand == "-")
+  
+  plot <- ggplot(metapeak.p, aes(x = tss_distance, y = reads, fill = strand))+ 
+          geom_bar(fill="#B23F49", stat="identity") + 
+          geom_vline(xintercept =0, linetype = "dotdash")+
+          geom_bar(data=metapeak.n, aes(x=tss_distance, y=reads), 
+                   fill="#045CA8", stat="identity")+
+          xlab("Distance from TSS (bp)")+ ylab("Normalized reads")+
+          facet_wrap(facets = "sample_name", ncol =2 )
+  print(plot)
+  }
+  
+  dmso_sig <- subset(plasmid_dmso, tss_distance >0 & tss_distance <= 80)$reads %>%
+              abs() %>% sum()
+  tri_sig <-  subset(plasmid_tri, tss_distance >0 & tss_distance <= 80)$reads%>%
+              abs() %>% sum()
+
+  sig_df <- data.frame(condition = c("dmso", "tri"), 
+                       paused_polii = c(dmso_sig, tri_sig), 
+                       name = name)
+  sig_df$paused_pol_norm <- sig_df$paused_polii / sig_df$paused_polii[1]
+  sig_df
+}
+
+
+
+name_list <-c("act5c", "act5c_pk_downstream")
+
+act5c_pol_sig_rep1 <- mapply(compare_dmso_and_tri,
+       paste0("reporter_dmso_5m_dps_", name_list, "_rpb3_chipnexus_rep1"),
+       paste0("reporter_triptolide_5m_dps_", name_list, "_rpb3_chipnexus_rep1"),
+       name_list, SIMPLIFY = F, USE.NAMES =F)  %>% do.call(rbind, .)
+
+act5c_pol_sig_rep2 <- mapply(compare_dmso_and_tri,
+       paste0("reporter_dmso_5m_dps_", name_list, "_rpb3_chipnexus_rep2"),
+       paste0("reporter_triptolide_5m_dps_", name_list, "_rpb3_chipnexus_rep2"),
+       name_list, list(F), SIMPLIFY = F, USE.NAMES =F)  %>% do.call(rbind, .)
+
+name_list2 <-c("pepck", "pepck_pk_downstream", "pepck_dve_downstream")
+
+pepck_pol_sig_rep1 <- mapply(compare_dmso_and_tri,
+       paste0("reporter_dmso_5m_dps_", name_list2, "_rpb3_chipnexus_rep1"),
+       paste0("reporter_triptolide_5m_dps_", name_list2, "_rpb3_chipnexus_rep1"),
+       name_list2, SIMPLIFY = F, USE.NAMES =F)  %>% do.call(rbind, .)
+
+pepck_pol_sig_rep2 <- mapply(compare_dmso_and_tri,
+       paste0("reporter_dmso_5m_dps_", name_list2, "_rpb3_chipnexus_rep2"),
+       paste0("reporter_triptolide_5m_dps_", name_list2, "_rpb3_chipnexus_rep2"),
+       name_list2,  list(F), SIMPLIFY = F, USE.NAMES =F)  %>% do.call(rbind, .)
+
+```
+
+## Quantify Pol II changes
+
+```{r quantification}
+
+process_pol_sig <- function(df, control_n = 1){
+  df_sub <- subset(df, condition == "tri")
+  df_sub$paused_pol_norm <- df_sub$paused_pol_norm /  df_sub$paused_pol_norm[control_n]
+  df_sub
+}
+
+sig_df_list <- list(act5c_pol_sig_rep1, act5c_pol_sig_rep2,
+                    pepck_pol_sig_rep1, pepck_pol_sig_rep2)
+
+sig_df <- lapply(sig_df_list, process_pol_sig) %>% do.call(rbind, .)
+
+summary_df <- summarySE(sig_df, measurevar="paused_pol_norm", 
+                        groupvars=c("name", "condition"))
+
+summary_df$name <- factor(summary_df$name, 
+                          levels = c( "pepck", "act5c", 
+                                     "pepck_pk_downstream",
+                                     "pepck_dve_downstream",
+                                     "act5c_pk_downstream"))
+
+ggplot(summary_df, aes(x=name, y=paused_pol_norm)) + 
+  geom_bar(stat= "identity", position = "dodge", 
+          fill = c(rep("#79AB30", 2), rep("#3A672F", 3))) + 
+  geom_errorbar(aes(ymin=paused_pol_norm-se, ymax=paused_pol_norm+se), 
+               width=.1, position=position_dodge(.9)) +
+  ggtitle("Pol II signal after TRI treatment")+
+  ylab("Normalized signal")+
+  xlab("")+ 
+  scale_x_discrete(labels=c("pepck", "Act5C", "pepck-pk-down", 
+                            "pepck-dve-down", "Act5C-pk-down")) +
+  geom_hline(yintercept = 1, lty = 4) +
+  theme(axis.text.x = element_text(size=14, angle = 45, hjust = 1)) 
+
+```
+
+# Session Info
+
+This analysis was performed with the following R/Bioconductor session:
+
+```{r}
+sessionInfo()
+```
+

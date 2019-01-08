@@ -4,7 +4,7 @@ We start with the Ubuntu xenial 16.04 EBS-backed AMI for the us-east-1 region.
 
 ## Boot AMI
 
-AMI was started as type **c4xlarge** with a 200GB EBS boot volume. This instance type has 16 CPU cores and ~30GB of memory.
+AMI was started as type **c4xlarge** with a 300GB EBS boot volume. This instance type has 16 CPU cores and ~30GB of memory.
 
 ## Set up data directory
 
@@ -61,7 +61,8 @@ bioc_packages <- c("GenomicRanges",
                    "rtracklayer",
                    "BSgenome.Dmelanogaster.UCSC.dm3",
                    "ShortRead",
-                   "GenomicAlignments")
+                   "GenomicAlignments",
+                   "chipseq")
 
 biocLite(bioc_packages)
 ````
@@ -104,6 +105,15 @@ pip install Cython
 sudo python setup.py install
 ```
 
+## Install fastx_toolkit
+
+```bash
+cd /data/software
+wget http://hannonlab.cshl.edu/fastx_toolkit/fastx_toolkit_0.0.13_binaries_Linux_2.6_amd64.tar.bz2
+tar xvjf fastx_toolkit_0.0.13_binaries_Linux_2.6_amd64.tar.bz2
+rm fastx_toolkit_0.0.13_binaries_Linux_2.6_amd64.tar.bz2
+mv bin fastx_toolkit_0.0.13_binaries_Linux_2.6_amd64
+```
 ## Getting genome fasta files
 
 dm3 and dp3 genome are downloaded from UCSC Genome Browser, plasmid fasta files are generated manually.
@@ -149,22 +159,32 @@ cd /data/preprocessed_fastq
 parallel -uj 2 Rscript /data/analysis_code/pipeline/preprocess_fastq.r -f {} -k 22 -b CTGA,TGAC,GACT,ACTG -t 50 -r 5 -p 5 -o \`basename {} .fastq.gz\`_processed.fastq.gz ::: /data/raw_fastq/*chipnexus*.fastq.gz
 
 parallel -uj 5 Rscript /data/analysis_code/pipeline/preprocess_fastq.r -f {} -k 22 -b CTGA,TGAC,GACT,ACTG -t 50 -r 0 -p 2 -o \`basename {} .fastq.gz\`_processed.fastq.gz ::: /data/raw_fastq/*rna_5_sequencing*.fastq.gz
+
 ```
 
 
-## Align ChIP-nexus and gene-specific RNA 5' sequencing samples
+## Align ChIP-seq, ChIP-nexus and gene-specific RNA 5' sequencing samples
 
 The following code is run in R
 
 ```S
 library(parallel)
 setwd("/data/preprocessed_fastq")
-sample_info <- read.table("/data/sample_summary.txt", header =T, sep = "\t")
+sample_info <- read.csv("/data/sample_summary.csv", header =T)
 
-nothing <- mclapply(sample_info$sample_name, function(x){
+chipseq <- subset(sample_info, data_type ==  "chipseq")
+other <- subset(sample_info, data_type !=  "chipseq")
+
+nothing <- mclapply(other$sample_name, function(x){
     message("Processing ", x)
     genome <- subset(sample_info, sample_name == x)$genome
     system(paste0("/data/analysis_code/pipeline/align_chipnexus.sh ",x, "_processed.fastq.gz /data/bowtie_index/", genome))
+}, mc.cores = 2)
+
+nothing <- mclapply(chipseq$sample_name, function(x){
+    message("Processing ", x)
+    genome <- subset(sample_info, sample_name == x)$genome
+    system(paste0("/data/analysis_code/pipeline/align_chipseq.sh ",x, ".fastq.gz /data/bowtie_index/", genome))
 }, mc.cores = 2)
 ```
 
@@ -176,21 +196,27 @@ mv *.bam /data/bam
 ```
 
 
-## Process aligned ChIP-nexus and gene-specific RNA 5' sequencing reads
+## Process aligned ChIP-seq, ChIP-nexus and gene-specific RNA 5' sequencing reads
 
 ```bash
 mkdir /data/granges
 cd /data/granges
 parallel -uj 10 Rscript /data/analysis_code/pipeline/process_chipnexus_bam.r -f {} -n \`basename {} .bam\` ::: /data/bam/*chipnexus*.bam
 parallel -uj 10 Rscript /data/analysis_code/pipeline/process_chipnexus_bam.r -f {} -n \`basename {} .bam\` -u F ::: /data/bam/*rna_5_sequencing*.bam
+
+parallel -uj 5 Rscript /data/analysis_code/pipeline/process_chipseq_bam.r -f {} -e 150 -n \`basename {} .bam\` ::: *chipseq*bam
+parallel -uj 5 Rscript /data/analysis_code/pipeline/process_chipseq_bam.r -f {} -e 150 -n \`basename {} .bam\` ::: *wce*bam
 ```
 
-
-## Generate normalized  BigWigs files
+## Generate normalized BigWigs files
 
 ```bash
 mkdir /data/bigwig
 cd /data/bigwig
 
-parallel -uj 8 Rscript /data/analysis_code/pipeline/generating_bw_from_gr.r -f {}  -n \`basename {} .granges.rds\`_normalized -t chipnexus ::: /data/granges/*.rds
+parallel -uj 8 Rscript /data/analysis_code/pipeline/generating_bw_from_gr.r -f {}  -n \`basename {} .granges.rds\`_normalized -t chipnexus ::: /data/granges/*chipnexus*.rds
+parallel -uj 8 Rscript /data/analysis_code/pipeline/generating_bw_from_gr.r -f {}  -n \`basename {} .granges.rds\`_normalized -t chipnexus ::: /data/granges/*rna_5_sequencing*.rds
+
+parallel -uj 6 Rscript /data/analysis_code/pipeline/generating_bw_from_gr.r -f {}  -n \`basename {} .ranges.RData\`_normalized -t chipseq ::: /data/granges/*chipseq*.ranges.RData
+parallel -uj 6 Rscript /data/analysis_code/pipeline/generating_bw_from_gr.r -f {}  -n \`basename {} .ranges.RData\`_normalized -t chipseq ::: /data/granges/*wce*.ranges.RData
 ```
